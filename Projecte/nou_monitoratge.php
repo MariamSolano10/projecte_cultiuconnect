@@ -1,26 +1,21 @@
 <?php
-// monitoratge.php - Formulari de Registre de Nou Monitoratge
+// operacio_nova.php - Formulari de Registre de Nova Observació de Camp (Monitoratge/Plagues)
 
+// Inclou la funció de connexió a la base de dades
 include 'db_connect.php'; 
 
-// --- LÒGICA PER REBRE EL MISSATGE DE RETORN (Només es manté per si el vols reutilitzar) ---
-$missatge_estat = null;
-$estat_classe = null; 
-
-if (isset($_GET['missatge']) && isset($_GET['estat'])) {
-    $missatge_estat = htmlspecialchars($_GET['missatge']);
-    $estat_classe = htmlspecialchars($_GET['estat']);
-}
-// -----------------------------------------------------------------
-
+// --- LÒGICA PER A OBTENIR SECTORS ---
 $llistat_sectors = [];
 $error_connexio = null;
-$data_actual = date('Y-m-d\TH:i'); // Format DateTime local HTML5
+
+// Obtenir la data i hora actuals per als camps predefinits
+$data_actual = date('Y-m-d'); 
+$hora_actual = date('H:i');
 
 try {
     $pdo = connectDB();
 
-    // 1. OBTENIR LLISTAT DE SECTORS ACTIUS
+    // Consulta per obtenir Sectors actius 
     $sql_sectors = "
         SELECT 
             T7.id_sector AS id, 
@@ -50,6 +45,15 @@ try {
     $error_connexio = "❌ Error de connexió o consulta a la base de dades: " . htmlspecialchars($e->getMessage());
     $llistat_sectors = [];
 }
+
+// --- LÒGICA PER REBRE EL MISSATGE DE RETORN DEL PROCESSAMENT ---
+$missatge_estat = null;
+$estat_classe = null; 
+
+if (isset($_GET['missatge']) && isset($_GET['estat'])) {
+    $missatge_estat = htmlspecialchars($_GET['missatge']);
+    $estat_classe = htmlspecialchars($_GET['estat']);
+}
 ?>
 
 <!DOCTYPE html>
@@ -58,46 +62,51 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CultiuConnect - Nou Monitoratge</title>
+    <title>CultiuConnect - Registrar Monitoratge</title>
     <link rel="stylesheet" href="estils.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
+        /* Definició de variables de color per a Monitoratge (canvi de lila a taronja) */
         :root {
             --color-principal: #1E4620;
             --color-secundari: #4CAF50;
             --color-primary-fosc: #143116;
-            --color-accent-taronja: #FF9800;
-            --color-accent-blau: #3498db;
+            --color-accent-taronja: #FF8C00; /* Taronja per a Monitoratge/Acció */
             --color-card-fons: white;
             --color-text-fosc: #333;
             --color-footer-fosc: rgba(30, 70, 32, 0.9);
             --color-footer-text: #ddd;
         }
 
+        /* 1. Estils del Fons i Contingut General (Igual que nou_analisi.php) */
         body {
             min-height: 100vh;
             display: flex;
             flex-direction: column;
+            padding-bottom: 0; 
             background-color: #333;
-            background-image: url('fons_monitoratge.jpg');
+            background-image: url('fons_sectors.jpg');
             background-size: cover;
             background-position: center top;
             background-attachment: fixed;
         }
 
-        main.contingut-monitoratge {
+        /* Ajustem main per forçar el creixement */
+        main.contingut-nou-analisi {
             flex-grow: 1;
-            max-width: 1000px;
-            padding: 105px 40px 40px 40px;
+            max-width: 1100px;
+            /* ALÇADA MÍNIMA ADAPTADA A LA MIDA D'AQUEST FORMULARI */
+            min-height: 800px; 
+            padding: 105px 40px 40px 40px; 
             margin: 0 auto;
-            min-height: calc(100vh - 40px);
             background-color: transparent;
             box-shadow: none;
             color: white;
         }
 
+        /* 2. Estil del Títol */
         .títol-pàgina {
-            max-width: 600px;
+            max-width: 700px;
             margin: 0 auto 20px auto;
             padding: 15px;
             background-color: rgba(255, 255, 255, 0.9);
@@ -105,16 +114,18 @@ try {
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
             color: var(--color-principal, #1E4620);
             text-align: center;
-            border-bottom: none;
         }
-
+        
+        /* Icona del títol en color Taronja */
         .títol-pàgina i {
-            color: var(--color-principal) !important;
+            color: var(--color-accent-taronja) !important;
         }
 
+
+        /* 3. Contenidor Formulari */
         .contenidor-formulari-bloc {
-            max-width: 900px;
-            margin: 0 auto 30px auto;
+            max-width: 800px; /* Reduïm l'ample per a aquest formulari */
+            margin: 0 auto 30px auto; 
             padding: 40px;
             background-color: var(--color-card-fons);
             border-radius: 8px;
@@ -122,10 +133,30 @@ try {
             color: var(--color-text-fosc);
         }
 
+        /* Estils del Formulari (Grid simple) */
         .formulari-monitoratge {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1fr; /* Dues columnes */
             gap: 20px;
+        }
+
+        /* Grup de camps que ocupen tota la línia */
+        .grup-camp.col-span-2 {
+            grid-column: 1 / span 2;
+        }
+
+        /* Estils de camps genèrics (mantenim els de nou_analisi.php) */
+        input[type="text"],
+        input[type="date"],
+        input[type="time"],
+        input[type="number"],
+        select,
+        textarea {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+            width: 100%;
         }
 
         .grup-camp {
@@ -134,37 +165,12 @@ try {
             gap: 5px;
         }
 
-        .grup-camp.col-span-2 {
-            grid-column: 1 / span 2;
-        }
-
         label {
             font-weight: bold;
             color: var(--color-text-fosc);
         }
-
-        input[type="text"],
-        input[type="datetime-local"],
-        input[type="number"],
-        select,
-        textarea {
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            box-sizing: border-box;
-        }
-
-        .grup-checkbox {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .grup-checkbox input[type="checkbox"] {
-            width: 20px;
-            height: 20px;
-        }
-
+        
+        /* Botó d'enviament en Taronja */
         .boto-enviar {
             background-color: var(--color-accent-taronja);
             color: white;
@@ -174,49 +180,46 @@ try {
             cursor: pointer;
             font-size: 1.1em;
             transition: background-color 0.3s;
+            grid-column: 1 / span 2;
             margin-top: 15px;
         }
 
         .boto-enviar:hover {
-            background-color: #e68900;
+            background-color: #e67e22;
         }
-
+        
+        /* Estils de missatge d'estat (iguals que abans) */
         .alerta-resposta {
-            max-width: 900px;
+            max-width: 1000px;
             margin: 20px auto;
             padding: 15px 20px;
             border-radius: 5px;
             font-weight: bold;
             text-align: center;
-            color: var(--color-text-fosc);
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
         }
-
-        .alerta-resposta i {
-            margin-right: 10px;
+        .alerta-error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
         }
-
         .alerta-exit {
             background-color: #d4edda;
             border: 1px solid #c3e6cb;
             color: #155724;
         }
 
-        .alerta-error {
-            background-color: #f8d7da;
-            border: 1px solid #f5c6cb;
-            color: #721c24;
-        }
-
+        /* 5. FOOTER (Igual que nou_analisi.php) */
         .peu-app {
-            position: relative;
+            position: relative; 
             background-color: var(--color-footer-fosc);
             color: var(--color-footer-text);
             padding: 30px 0 15px 0;
             width: 100%;
             font-size: 0.9em;
             box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.5);
-            margin-top: auto;
+            margin-top: auto; 
+            z-index: 1;
         }
 
         .contingut-footer {
@@ -240,10 +243,10 @@ try {
         <nav class="navegacio-principal">
             <ul>
                 <li><a href="index.html"><i class="fas fa-house"></i> Panell</a></li>
-                <li><a href="operacio_nova.php"><i class="fas fa-spray-can-sparkles"></i> Nou Tractament</a></li>
+                <li class="actiu"><a href="operacio_nova.php"><i class="fas fa-spray-can-sparkles"></i> Nou Tractament</a></li>
                 <li><a href="quadern.php"><i class="fas fa-file-invoice"></i> Quadern Explotació</a></li>
                 <li><a href="estoc.php"><i class="fas fa-boxes-stacked"></i> Inventari</a></li>
-                <li class="actiu"><a href="#"><i class="fas fa-bug"></i> Monitoratge</a></li>
+                <li><a href="analisis_lab.php"><i class="fas fa-flask"></i> Anàlisis</a></li>
             </ul>
         </nav>
         <div class="informacio-usuari">
@@ -251,13 +254,12 @@ try {
         </div>
     </header>
 
-    <main class="contingut-monitoratge">
+    <main class="contingut-nou-analisi">
         <h1 class="títol-pàgina">
             <i class="fas fa-bug"></i>
             Registre de Monitoratge i Plagues
         </h1>
-        <p style="margin-bottom: 30px; color: #ccc">Registra una nova observació de plaga, malaltia, deficiència o
-            mala herba per fer el seguiment.</p>
+        <p style="margin-bottom: 30px; color: #ccc">Registra una nova observació de plaga, malaltia, deficiència o mala herba per fer el seguiment.</p>
 
         <?php if ($missatge_estat): ?>
             <div class="alerta-resposta alerta-<?= $estat_classe; ?>">
@@ -274,10 +276,11 @@ try {
                 </div>
             <?php endif; ?>
 
-            <form action="nou_monitoratge.php" method="POST" class="formulari-monitoratge">
+            <form action="processar_monitoratge.php" method="POST" class="formulari-monitoratge">
+
                 <div class="grup-camp col-span-2">
-                    <label for="sector_observat">Sector d'Observació <span style="color: red;">*</span></label>
-                    <select id="sector_observat" name="sector_observat" required>
+                    <label for="id_sector">Sector d'Observació <span style="color: red;">*</span></label>
+                    <select id="id_sector" name="id_sector" required>
                         <option value="" selected disabled>--- Selecciona un sector ---</option>
                         <?php foreach ($llistat_sectors as $sector): ?>
                             <option value="<?= $sector['id']; ?>">
@@ -289,46 +292,45 @@ try {
 
                 <div class="grup-camp">
                     <label for="data_observacio">Data i Hora de l'Observació <span style="color: red;">*</span></label>
-                    <input type="datetime-local" id="data_observacio" name="data_observacio"
-                        value="<?= $data_actual; ?>" required>
+                    <input type="date" id="data_observacio" name="data_observacio" value="<?= $data_actual; ?>" required>
+                    <input type="time" id="hora_observacio" name="hora_observacio" value="<?= $hora_actual; ?>" required>
                 </div>
 
                 <div class="grup-camp">
                     <label for="tipus_problema">Tipus de Problema <span style="color: red;">*</span></label>
                     <select id="tipus_problema" name="tipus_problema" required>
                         <option value="" selected disabled>--- Selecciona un tipus ---</option>
-                        <option value="Plaga">Plaga (Insecte, Àcar, Nematode)</option>
-                        <option value="Malaltia">Malaltia (Fong, Virus, Bactèria)</option>
-                        <option value="Deficiencia">Deficiència Nutricional/Estrès</option>
+                        <option value="Plaga">Plaga</option>
+                        <option value="Malaltia">Malaltia</option>
+                        <option value="Deficiencia">Deficiència Nutricional</option>
                         <option value="Mala Herba">Mala Herba</option>
                         <option value="Altres">Altres Observacions</option>
                     </select>
                 </div>
 
                 <div class="grup-camp">
-                    <label for="descripcio_breu">Element Observat (Nom) <span style="color: red;">*</span></label>
-                    <input type="text" id="descripcio_breu" name="descripcio_breu"
-                        placeholder="Ex: Mosca Blanca, Oïdi, Manca de Nitrogen..." required>
+                    <label for="element_observat">Element Observat (Nom) <span style="color: red;">*</span></label>
+                    <input type="text" id="element_observat" name="element_observat" placeholder="Ex: Mosca Blanca, Oïdi, Manca de Nitrogen..." required>
+                </div>
+
+                <div class="grup-camp">
+                    <label for="nivell_danys">Nivell / % Danys (Opcional)</label>
+                    <input type="text" id="nivell_danys" name="nivell_danys" placeholder="Ex: 10 (per cent de dany), o unitats/trampa...">
+                </div>
+
+                <div class="grup-camp col-span-2">
+                    <label for="descripcio">Descripció Detallada i Ubicació <span style="color: red;">*</span></label>
+                    <textarea id="descripcio" name="descripcio" placeholder="Ex: Observació de fulles groguenques a la zona nord del sector. 3 trips/trampa. La plaga afecta un 5% de la parcel·la." required></textarea>
                 </div>
                 
-                <div class="grup-camp">
-                    <label for="nivell_poblacio">Nivell / % Danys (Opcional)</label>
-                    <input type="number" step="0.01" id="nivell_poblacio" name="nivell_poblacio"
-                        placeholder="Ex: 10 (per cent de dany, o unitats/trampa...)">
-                </div>
-
                 <div class="grup-camp col-span-2">
-                    <label for="llindar_assolit">Llindar d'Intervenció Assolit?</label>
-                    <div class="grup-checkbox">
-                        <input type="checkbox" id="llindar_assolit" name="llindar_assolit" value="1">
-                        <label for="llindar_assolit" style="font-weight: normal; color: #666;">Marcar si l'observació
-                            requereix acció immediata.</label>
-                    </div>
+                    <input type="checkbox" id="llindar_assolit" name="llindar_assolit" value="1" style="width: auto;">
+                    <label for="llindar_assolit" style="display: inline-block; font-weight: normal;">Marcar si l'observació requereix acció immediata (llindar d'intervenció assolit).</label>
                 </div>
-
+                
                 <div class="grup-camp col-span-2">
                     <button type="submit" class="boto-enviar">
-                        <i class="fas fa-cloud-upload"></i> Registrar Monitoratge
+                        <i class="fas fa-plus-circle"></i> Registrar Monitoratge
                     </button>
                 </div>
             </form>
@@ -342,7 +344,6 @@ try {
                 <p>Eina de gestió agronòmica per a una agricultura més eficient i sostenible.</p>
                 <p>&copy; 2025 Tots els drets reservats.</p>
             </div>
-
             <div class="columna-footer legal-ajuda">
                 <h4>Ajuda i Legal</h4>
                 <ul>
@@ -351,7 +352,6 @@ try {
                     <li><a href="termes.php">Termes d'Ús</a></li>
                 </ul>
             </div>
-
             <div class="columna-footer contacte-social">
                 <h4>Contacte</h4>
                 <p><i class="fas fa-envelope"></i> info@cultiuconnect.cat</p>
@@ -364,5 +364,4 @@ try {
         </div>
     </footer>
 </body>
-
 </html>

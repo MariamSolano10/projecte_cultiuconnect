@@ -2,7 +2,8 @@
 // operacio_nova.php - Pàgina de Registre de Nou Tractament Fitosanitari/Fertilització
 
 // Inclusió de la lògica de connexió.
-include 'db_connect.php';
+// Assegura't que el fitxer 'db_connect.php' conté la funció connectDB()
+include 'db_connect.php'; 
 
 $llistat_sectors = [];
 $productes_disponibles = [];
@@ -11,33 +12,44 @@ $error_connexio = null;
 try {
     $pdo = connectDB();
 
-    // 1. OBTENIR LLISTAT DE SECTORS AMB SUPERFÍCIE I DATA DE COLLITA PREVISTA
-    // Suposant que la data de collita prevista es troba a la taula Explotacio_Sector o Cultiu_Varietat
+    // 1. OBTENIR LLISTAT DE SECTORS AMB SUPERFÍCIE, VARIETAT I DATA DE COLLITA PREVISTA
+    // S'utilitzen JOINs per obtenir tota la informació rellevant: Sector, Plantació, Varietat, i Superfície.
     $sql_sectors = "
         SELECT 
-            id_sector AS id, 
-            CONCAT(codi_sector, ' - ', nom_varietat, ' (', superficie_ha, ' ha)') AS nom,
-            superficie_ha, 
-            collita_prevista AS collita_previsio
+            T7.id_sector AS id, 
+            T7.nom AS codi_sector,
+            T6.nom_varietat,
+            -- Sumem la superfície de totes les parcel·les que componen el sector i la convertim a HA (m2 / 10000)
+            SUM(T8.superficie_m2) / 10000 AS superficie_ha, 
+            -- Previsió d'entrada en producció com a referència PHI
+            T10.previsio_entrada_produccio AS collita_previsio 
         FROM 
-            Explotacio_Sector
+            Sector T7
+        INNER JOIN 
+            Plantacio T10 ON T7.id_sector = T10.id_sector
+        INNER JOIN 
+            Varietat T6 ON T10.id_varietat = T6.id_varietat
+        INNER JOIN 
+            Parcela_Sector T8 ON T7.id_sector = T8.id_sector
+        WHERE 
+            T10.data_arrencada IS NULL -- Només sectors amb plantacions actives
+        GROUP BY
+            T7.id_sector, T7.nom, T6.nom_varietat, T10.previsio_entrada_produccio
         ORDER BY 
-            id_sector;
+            T7.nom ASC;
     ";
     $stmt_sectors = $pdo->prepare($sql_sectors);
     $stmt_sectors->execute();
     $llistat_sectors = $stmt_sectors->fetchAll(PDO::FETCH_ASSOC);
 
-    // 2. OBTENIR PRODUCTES QUÍMICS AMB PHI
-    // Incloem un 'Sense Producte' o 'Fertilització' manualment com a ID 0 si cal,
-    // o assumim que els fertilitzants estan a la BD amb PHI=0.
-    // Aquí farem la consulta només dels registres reals amb PHI
+    // 2. OBTENIR PRODUCTES QUÍMICS (Corregint noms de columna)
+    // Utilitzem dosi_max_ha com a dosi de referència i un valor per defecte per a la unitat.
     $sql_productes = "
         SELECT 
             id_producte AS id, 
             nom_comercial AS nom, 
-            dosi_recomanada AS dosi, 
-            unitat_dosi AS unitat, 
+            dosi_max_ha AS dosi, 
+            'L/ha o kg/ha' AS unitat, -- **NOTA: Aquesta columna hauria d'estar a Producte_Quimic**
             termini_seguretat_dies AS phi_dies
         FROM 
             Producte_Quimic
@@ -48,7 +60,7 @@ try {
     $stmt_productes->execute();
     $productes_disponibles = $stmt_productes->fetchAll(PDO::FETCH_ASSOC);
 
-    // Afegir l'opció manual de "Sense Producte" per a altres operacions si no és a la BD (ID 0)
+    // Afegir l'opció manual de "Sense Producte"
     array_unshift($productes_disponibles, [
         'id' => 0,
         'nom' => 'Sense Producte (Altres operacions / Fertilització simple)',
@@ -59,15 +71,15 @@ try {
 
 
 } catch (Exception $e) {
-    $error_connexio = "❌ Error de connexió a la base de dades: " . htmlspecialchars($e->getMessage());
+    $error_connexio = "❌ Error de connexió o consulta a la base de dades: " . htmlspecialchars($e->getMessage());
     $llistat_sectors = [];
     $productes_disponibles = [];
+    // Opcional: registrar l'error intern: error_log($e->getMessage());
 }
 
 
 // Preparar les dades de sectors i productes per a JavaScript
 $sectors_json = json_encode(array_column($llistat_sectors, null, 'id'));
-// Si no hi ha sectors, assegurem que sigui un objecte buit per al JS
 if (empty($llistat_sectors))
     $sectors_json = '{}';
 
@@ -248,7 +260,7 @@ $data_actual = date('Y-m-d\TH:i'); // Format DateTime local HTML5
         }
 
         /* 4. FOOTER (Sticky Footer) */
-        */ .peu-app {
+        .peu-app {
             position: relative;
             background-color: var(--color-footer-fosc);
             color: var(--color-footer-text);
@@ -428,6 +440,11 @@ $data_actual = date('Y-m-d\TH:i'); // Format DateTime local HTML5
             càlcul de les dosis.</p>
         <div class="contenidor-formulari-bloc">
 
+            <?php if ($error_connexio): ?>
+                <div class="alerta-container" style="display: block;">
+                    <?= $error_connexio; ?>
+                </div>
+            <?php endif; ?>
 
             <form action="processar_operacio.php" method="POST" class="formulari-tractament"
                 onsubmit="return validarTractament()">
@@ -439,7 +456,7 @@ $data_actual = date('Y-m-d\TH:i'); // Format DateTime local HTML5
                         <?php foreach ($llistat_sectors as $sector): ?>
                             <option value="<?= $sector['id']; ?>" data-superficie="<?= $sector['superficie_ha']; ?>"
                                 data-collita="<?= $sector['collita_previsio']; ?>">
-                                <?= htmlspecialchars($sector['nom']); ?>
+                                <?= htmlspecialchars($sector['codi_sector'] . ' - ' . $sector['nom_varietat'] . ' (' . number_format((float)$sector['superficie_ha'], 2, ',', '.') . ' ha)'); ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
@@ -470,7 +487,7 @@ $data_actual = date('Y-m-d\TH:i'); // Format DateTime local HTML5
                     <label for="dosi">Dosi Aplicada (Per Hectàrea) <span style="color: red;">*</span></label>
                     <input type="number" step="0.01" id="dosi" name="dosi" placeholder="Ex: 1.5"
                         oninput="actualitzarInfo()" required>
-                    <small style="color: #999;">Unitat per hectàrea: <span id="unitat_dosi">L/ha</span></small>
+                    <small style="color: #999;">Unitat per hectàrea: <span id="unitat_dosi">L/ha o kg/ha</span></small>
                 </div>
 
                 <div class="grup-camp">
@@ -554,64 +571,72 @@ $data_actual = date('Y-m-d\TH:i'); // Format DateTime local HTML5
         function actualitzarInfo() {
             const sectorId = sectorSelect.value;
             const producteId = producteSelect.value;
-            let dosi = parseFloat(dosiInput.value) || 0;
+            let dosi = parseFloat(dosiInput.value.replace(',', '.')) || 0;
 
             // Reiniciar estats
             superficieMostrada.textContent = '--';
             quantitatTotalInput.value = 'Calculant...';
-            unitatDosiSpan.textContent = 'L/ha';
+            unitatDosiSpan.textContent = 'L/ha o kg/ha';
             alertaPhiDiv.style.display = 'none';
 
             let superficie = 0;
             let collitaPrevista = null;
             let phiDies = 0;
-            let unitat = 'L/ha';
+            let unitat = 'L/ha o kg/ha';
 
             // 1. Obtenció de dades del Sector
             if (SECTORS_DATA[sectorId]) {
-                superficie = SECTORS_DATA[sectorId].superficie_ha;
-                collitaPrevista = new Date(SECTORS_DATA[sectorId].collita_previsio + 'T00:00:00');
-                superficieMostrada.textContent = superficie.toFixed(2);
+                superficie = parseFloat(SECTORS_DATA[sectorId].superficie_ha) || 0;
+                // La data de collita ve en format YYYY-MM-DD
+                collitaPrevista = new Date(SECTORS_DATA[sectorId].collita_previsio + 'T00:00:00'); 
+                superficieMostrada.textContent = superficie.toFixed(2).replace('.', ',');
             }
 
             // 2. Obtenció de dades del Producte i pre-omplir Dosi si cal
             if (PRODUCTES_DATA[producteId]) {
-                phiDies = parseInt(PRODUCTES_DATA[producteId].phi_dies, 10);
+                phiDies = parseInt(PRODUCTES_DATA[producteId].phi_dies, 10) || 0;
                 unitat = PRODUCTES_DATA[producteId].unitat;
                 unitatDosiSpan.textContent = unitat;
 
                 const dosiRecomanada = parseFloat(PRODUCTES_DATA[producteId].dosi) || 0;
 
-                // Només pre-omplim si l'usuari no ha escrit res encara
-                if (dosiInput.value === "" && dosiRecomanada > 0) {
-                    dosiInput.value = dosiRecomanada.toFixed(2);
+                // Només pre-omplim si l'usuari no ha escrit res encara o és zero
+                if ((dosiInput.value === "" || dosi === 0) && dosiRecomanada > 0) {
+                    dosiInput.value = dosiRecomanada.toFixed(2).replace('.', ',');
                     dosi = dosiRecomanada; // Utilitzem el valor pre-omplert pel càlcul
                 }
             }
-
-            // 3. CÀLCUL DE QUANTITAT TOTAL (Aquesta part estava bé)
+            
+            // 3. CÀLCUL DE QUANTITAT TOTAL
             if (dosi > 0 && superficie > 0) {
                 const quantitatTotal = dosi * superficie;
                 // Mostrem la quantitat total amb la unitat (només la part abans de '/')
-                quantitatTotalInput.value = `${quantitatTotal.toFixed(2)} ${unitat.split('/')[0]}`;
+                const unitat_neta = unitat.split('/')[0].trim();
+                quantitatTotalInput.value = `${quantitatTotal.toFixed(2).replace('.', ',')} ${unitat_neta}`;
             } else {
-                quantitatTotalInput.value = '0.00';
+                quantitatTotalInput.value = '0,00';
             }
 
 
-            // 4. Validació PHI (Termini de Seguretat) (Aquesta lògica és independent del càlcul)
+            // 4. Validació PHI (Termini de Seguretat)
+            // Només si tenim un PHI requerit, un sector seleccionat i una data d'aplicació
             if (phiDies > 0 && collitaPrevista && dataAplicacioInput.value) {
                 const dataAplicacio = new Date(dataAplicacioInput.value);
+                
+                // DATA SEGURA: data d'aplicació + PHI dies
                 const dataSegura = new Date(dataAplicacio);
                 dataSegura.setDate(dataSegura.getDate() + phiDies);
 
+                // Comparem la data segura amb la collita prevista. Si la collita és abans de la data segura, hi ha alerta.
                 if (dataSegura >= collitaPrevista) {
                     const msPerDay = 1000 * 60 * 60 * 24;
+                    // Calculem els dies que queden de l'aplicació a la collita (temps real de PHI)
                     const tempsRestantMS = collitaPrevista.getTime() - dataAplicacio.getTime();
-                    const diesRestants = Math.ceil(tempsRestantMS / msPerDay);
+                    // Math.floor per seguretat (si és 1.9 dies, no són 2 dies complets)
+                    const diesRestants = Math.floor(tempsRestantMS / msPerDay); 
 
                     phiRequeritSpan.textContent = phiDies;
-                    diesRestantsSpan.textContent = diesRestants;
+                    diesRestantsSpan.textContent = diesRestants < 0 ? '0 (LA COLLITA JA HA PASSAT)' : diesRestants;
                     alertaPhiDiv.style.display = 'block';
                 }
             }
@@ -620,10 +645,12 @@ $data_actual = date('Y-m-d\TH:i'); // Format DateTime local HTML5
         // Funció de validació per al formulari
         function validarTractament() {
             actualitzarInfo(); // Recalculem/validem per última vegada
+
+            // Comprovem si l'alerta PHI és visible
             const alertaVisible = document.getElementById('alerta-phi').style.display === 'block';
 
             if (alertaVisible) {
-                alert("ALERTA: El Termini de Seguretat (PHI) no es compleix! No es pot registrar el tractament.");
+                alert("❌ ERROR: El Termini de Seguretat (PHI) no es compleix! No es pot registrar el tractament.");
                 return false;
             }
             return true;
@@ -631,16 +658,20 @@ $data_actual = date('Y-m-d\TH:i'); // Format DateTime local HTML5
 
         // Inicialització: Selecciona els primers valors vàlids i executa el càlcul.
         document.addEventListener('DOMContentLoaded', () => {
+            
+            // Afegir escoltadors d'esdeveniments per assegurar la reactivitat del camp 'dosi'
+            dosiInput.addEventListener('input', actualitzarInfo);
+
             // Selecciona Sector i Producte a l'índex 1 per iniciar els càlculs, si no hi ha cap valor escollit
+            // NOTA: Això seleccionarà l'opció 'Sense Producte' (id=0) per defecte si no es canvia
+            // Per defecte, si no hi ha cap valor seleccionat, se seleccionen les primeres opcions disponibles per veure els càlculs.
             if (sectorSelect.selectedIndex === 0 && sectorSelect.options.length > 1) {
                 sectorSelect.selectedIndex = 1;
             }
             if (producteSelect.selectedIndex === 0 && producteSelect.options.length > 1) {
-                producteSelect.selectedIndex = 1;
+                // Selecciona el primer producte real (índex 2, ja que l'índex 1 és 'Sense Producte' i l'índex 0 és disabled)
+                producteSelect.selectedIndex = 2; 
             }
-
-            // Afegir escoltadors d'esdeveniments per assegurar la reactivitat del camp 'dosi'
-            dosiInput.addEventListener('input', actualitzarInfo);
 
             // Executar la funció inicialment
             actualitzarInfo();

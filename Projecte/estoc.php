@@ -1,7 +1,7 @@
 <?php
 // estoc.php - Pàgina de Gestió de l'Inventari i Estocs (Control de Magatzem)
 
-// Inclusió de la lògica de connexió. Necessari per a la futura càrrega real de dades.
+// Inclusió de la lògica de connexió.
 include 'db_connect.php';
 
 // Inicialització de missatges d'alerta general
@@ -14,27 +14,26 @@ try {
     $pdo = connectDB();
 
     // --------------------------------------------------------------------------------
-    // Consulta SQL per obtenir l'inventari actiu
-    // Fem un JOIN entre Inventari_Estoc i Producte_Quimic per obtenir el nom del producte.
-    // També ordenem per estat per mostrar els problemes primer.
+    // Consulta SQL per obtenir l'inventari actiu.
+    // CORRECCIÓ: S'ha ELIMINAT 'E.nivell_minim' per adaptar-se a l'estructura de la BBDD.
+    // CORRECCIÓ: Ús d'àlies per 'unitat_mesura' i 'data_caducitat'.
     // --------------------------------------------------------------------------------
     $sql = "
         SELECT 
             E.id_estoc, 
             P.nom_comercial AS nom_producte, 
-            E.lot_codi, 
+            E.num_lot,                              
             E.quantitat_disponible, 
-            E.unitat, 
-            E.caducitat, 
-            E.nivell_minim
+            E.unitat_mesura AS unitat,              
+            E.data_caducitat AS caducitat           -- Nom de columna real de la BBDD
         FROM 
             Inventari_Estoc E
         JOIN 
             Producte_Quimic P ON E.id_producte = P.id_producte
         WHERE 
-            E.quantitat_disponible > 0 -- Només lots amb estoc
+            E.quantitat_disponible > 0 
         ORDER BY 
-            FIELD(E.unitat, 'L', 'Kg', 'Unitat'), -- Per grups, si vols
+            FIELD(E.unitat_mesura, 'L', 'Kg', 'Unitat'), 
             P.nom_comercial ASC;
     ";
 
@@ -49,26 +48,33 @@ try {
 }
 
 // Lògica de detecció d'alertes i assignació de classe CSS
+// LÒGICA DE REPOSICIÓ IGNORADA: Ja que no tenim la dada 'nivell_minim' a la BBDD.
 function obtenirClasseEstatLot(float $quantitat, string $data_caducitat, float $nivell_minim): string
 {
-    // Si hi ha producte caducat, potser millor prioritzar-ho
-    $data_caducitat_dt = new DateTime($data_caducitat);
-    $avui = new DateTime();
+    // Fix: Si la data_caducitat és NULL o buida, ignorem la comprovació de caducitat.
+    if (empty($data_caducitat)) {
+        $data_caducitat_dt = null;
+    } else {
+        $data_caducitat_dt = new DateTime($data_caducitat);
+        $avui = new DateTime();
+        
+        // 1. Alerta si ja ha caducat
+        if ($data_caducitat_dt < $avui) {
+            return 'estat-caducat-urgent';
+        }
 
-    // Alerta si ja ha caducat
-    if ($data_caducitat_dt < $avui) {
-        return 'estat-caducat-urgent';
+        // 2. Alerta si caduca en menys de 6 mesos
+        $data_limit_caducitat = (new DateTime())->modify('+6 months');
+        if ($data_caducitat_dt < $data_limit_caducitat) {
+            return 'estat-caducitat'; // Caducitat pròxima
+        }
     }
 
-    // Alerta si caduca en menys de 6 mesos
-    $data_limit_caducitat = (new DateTime())->modify('+6 months');
-    if ($data_caducitat_dt < $data_limit_caducitat) {
-        return 'estat-caducitat'; // Caducitat pròxima
-    }
 
-    // Alerta si està per sota del mínim
+    // 3. Alerta si està per sota del mínim (AQUESTA LÒGICA ESTÀ DESACTIVADA)
     if ($quantitat < $nivell_minim) {
-        return 'estat-reposicio'; // Estoc per sota del mínim
+         // Com que cridem amb $nivell_minim = 999999.0, aquesta condició és falsa.
+        return 'estat-reposicio'; 
     }
 
     return '';
@@ -79,28 +85,24 @@ $alerta_text = [];
 
 // 1. Caducats Urgents
 $lots_caducats_urgents = array_filter($inventari_lots, function ($lot) {
-    return obtenirClasseEstatLot($lot['quantitat_disponible'], $lot['caducitat'], 999999) === 'estat-caducat-urgent';
+    // 999999 desactiva la comprovació de nivell mínim a la funció
+    return obtenirClasseEstatLot($lot['quantitat_disponible'], $lot['caducitat'] ?? '', 999999) === 'estat-caducat-urgent';
 });
 if (count($lots_caducats_urgents) > 0) {
     $alerta_text[] = "🛑 **URGENT!** Hi ha " . count($lots_caducats_urgents) . " lots que **ja estan CADUCATS** i s'han de retirar de l'ús.";
 }
 
 // 2. Caducitat Pròxima
-$lots_caducitat_proxima = array_filter($inventari_lots, function ($lot) {
-    return obtenirClasseEstatLot($lot['quantitat_disponible'], $lot['caducitat'], 999999) === 'estat-caducitat';
+$lots_caducitat_proxima = array_filter($inventari_lots, function ($lot) use ($lots_caducats_urgents) {
+    // 999999 desactiva la comprovació de nivell mínim
+    $estat = obtenirClasseEstatLot($lot['quantitat_disponible'], $lot['caducitat'] ?? '', 999999);
+    // Assegurar que no es compti doble si ja és urgent
+    return $estat === 'estat-caducitat' && !in_array($lot, $lots_caducats_urgents); 
 });
 if (count($lots_caducitat_proxima) > 0) {
     $alerta_text[] = "⚠️ Hi ha " . count($lots_caducitat_proxima) . " lots amb **data de caducitat pròxima** (menys de 6 mesos).";
 }
-
-// 3. Reposició
-$lots_baixenivell = array_filter($inventari_lots, function ($lot) {
-    // Hem d'assegurar-nos que no estigui ja marcat com a caducat urgent, ja que l'estat de reposició no és la prioritat si està caducat.
-    return (obtenirClasseEstatLot($lot['quantitat_disponible'], $lot['caducitat'], $lot['nivell_minim']) === 'estat-reposicio');
-});
-if (count($lots_baixenivell) > 0) {
-    $alerta_text[] = "📦 Hi ha " . count($lots_baixenivell) . " lots amb **estoc per sota del nivell mínim** (necessiten reposició).";
-}
+// Alerta de reposició eliminada per falta de dada a la BBDD.
 
 if (!empty($alerta_text)) {
     $alerta_general = implode('<br>', $alerta_text);
@@ -217,16 +219,11 @@ if (!empty($alerta_text)) {
         }
 
         /* Estats i Alertes */
-        .taula-inventari .estat-reposicio {
+        /* Alerta de reposició desactivada */
+        /* .taula-inventari .estat-reposicio {
             background-color: #ffe0b2;
-            /* Taronja Clar */
             font-weight: bold;
-        }
-
-        .taula-inventari .estat-reposicio:hover {
-            background-color: #ffd495;
-            /* Mantenir hover en el mateix to */
-        }
+        } */
 
         .taula-inventari .estat-caducitat {
             background-color: #f8d7da;
@@ -432,7 +429,7 @@ if (!empty($alerta_text)) {
         <h1 class="títol-pàgina" style="margin-bottom: 20px;">
             <i class="fas fa-warehouse"></i>
             Gestió d'Inventari i Control d'Estocs
-            </h1>
+        </h1>
         <p style="margin-bottom: 30px;">Control d'existències, nivells de reposició i gestió de caducitats per a
             tots
             els lots de productes químics.</p>
@@ -446,7 +443,7 @@ if (!empty($alerta_text)) {
         <?php if ($alerta_general): ?>
             <div class="alerta-inventari">
                 <?= $alerta_general; ?>
-                </div>
+            </div>
         <?php endif; ?>
 
         <div class="botons-accions">
@@ -462,7 +459,6 @@ if (!empty($alerta_text)) {
                     <th>Nom Producte</th>
                     <th>Codi de Lot</th>
                     <th>Quantitat Disponible</th>
-                    <th>Nivell Mínim</th>
                     <th>Data Caducitat</th>
                     <th>Estat</th>
                     <th>Accions</th>
@@ -471,34 +467,36 @@ if (!empty($alerta_text)) {
             <tbody>
                 <?php if (empty($inventari_lots)): ?>
                     <tr>
-                        <td colspan="8" style="text-align: center; padding: 30px; color: #999;">
+                        <td colspan="6" style="text-align: center; padding: 30px; color: #999;">
                             L'inventari està buit. Registra un nou lot per començar.
                         </td>
                     </tr>
                 <?php else: ?>
                     <?php foreach ($inventari_lots as $lot):
+                        // 999999.0 desactiva la comprovació de nivell mínim
                         $classe_estat = obtenirClasseEstatLot(
                             $lot['quantitat_disponible'],
-                            $lot['caducitat'],
-                            $lot['nivell_minim']
+                            $lot['caducitat'] ?? '', // Operador de coalescència per evitar warnings si és NULL
+                            999999.0 
                         );
 
                         $text_estat = 'OK';
                         if ($classe_estat === 'estat-reposicio') {
-                            $text_estat = 'REPOSICIÓ URGENT';
+                            $text_estat = 'REPOSICIÓ URGENT (Funcionalitat Desactivada)'; 
                         } elseif ($classe_estat === 'estat-caducitat') {
                             $text_estat = 'CADUCITAT PRÒXIMA';
+                        } elseif ($classe_estat === 'estat-caducat-urgent') {
+                            $text_estat = 'CADUCAT!';
                         }
                         ?>
                         <tr class="<?= $classe_estat; ?>">
                             <td><?= $lot['id_estoc']; ?></td>
                             <td><?= htmlspecialchars($lot['nom_producte']); ?></td>
-                            <td><?= htmlspecialchars($lot['lot_codi']); ?></td>
+                            <td><?= htmlspecialchars($lot['num_lot']); ?></td> 
                             <td style="font-weight: bold;">
                                 <?= number_format($lot['quantitat_disponible'], 1) . ' ' . $lot['unitat']; ?>
                             </td>
-                            <td><?= number_format($lot['nivell_minim'], 1) . ' ' . $lot['unitat']; ?></td>
-                            <td><?= date('d/m/Y', strtotime($lot['caducitat'])); ?></td>
+                            <td><?= empty($lot['caducitat']) ? 'N/A' : date('d/m/Y', strtotime($lot['caducitat'])); ?></td>
                             <td style="font-weight: bold;"><?= $text_estat; ?></td>
                             <td>
                                 <a href="moure_lot.php?id=<?= $lot['id_estoc']; ?>" title="Moure/Ajustar Estoc">
@@ -515,8 +513,8 @@ if (!empty($alerta_text)) {
         </table>
 
         <p style="margin-top: 20px; font-size: 0.85em;">
-            * Els lots amb estoc inferior al nivell mínim o amb caducitat pròxima es mostren amb fons de color per
-            facilitar la gestió.
+            * Els lots amb caducitat pròxima es mostren amb fons de color. La comprovació de nivell mínim està
+            desactivada per falta de dades a la taula d'estoc.
         </p>
 
     </main>

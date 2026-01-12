@@ -1,26 +1,18 @@
 <?php
-// monitoratge.php - Formulari de Registre de Nou Monitoratge
+// nou_analisi.php - Formulari de Registre de Nova Anàlisi de Laboratori
 
+// Inclou la funció de connexió a la base de dades
 include 'db_connect.php'; 
 
-// --- LÒGICA PER REBRE EL MISSATGE DE RETORN (Només es manté per si el vols reutilitzar) ---
-$missatge_estat = null;
-$estat_classe = null; 
-
-if (isset($_GET['missatge']) && isset($_GET['estat'])) {
-    $missatge_estat = htmlspecialchars($_GET['missatge']);
-    $estat_classe = htmlspecialchars($_GET['estat']);
-}
-// -----------------------------------------------------------------
-
+// --- LÒGICA PER A OBTENIR SECTORS ---
 $llistat_sectors = [];
 $error_connexio = null;
-$data_actual = date('Y-m-d\TH:i'); // Format DateTime local HTML5
+$data_actual = date('Y-m-d'); // Format de Data simple HTML5
 
 try {
     $pdo = connectDB();
 
-    // 1. OBTENIR LLISTAT DE SECTORS ACTIUS
+    // Consulta per obtenir Sectors actius (amb dades de varietat i superfície)
     $sql_sectors = "
         SELECT 
             T7.id_sector AS id, 
@@ -36,7 +28,7 @@ try {
         INNER JOIN 
             Parcela_Sector T8 ON T7.id_sector = T8.id_sector
         WHERE 
-            T10.data_arrencada IS NULL
+            T10.data_arrencada IS NULL 
         GROUP BY
             T7.id_sector, T7.nom, T6.nom_varietat
         ORDER BY 
@@ -47,8 +39,18 @@ try {
     $llistat_sectors = $stmt_sectors->fetchAll(PDO::FETCH_ASSOC);
 
 } catch (Exception $e) {
-    $error_connexio = "❌ Error de connexió o consulta a la base de dades: " . htmlspecialchars($e->getMessage());
+    // Si hi ha un error de connexió, es captura
+    $error_connexio = "❌ Error de connexió a la base de dades: " . htmlspecialchars($e->getMessage());
     $llistat_sectors = [];
+}
+
+// --- LÒGICA PER REBRE EL MISSATGE DE RETORN DEL PROCESSAMENT ---
+$missatge_estat = null;
+$estat_classe = null; 
+
+if (isset($_GET['missatge']) && isset($_GET['estat'])) {
+    $missatge_estat = htmlspecialchars($_GET['missatge']);
+    $estat_classe = htmlspecialchars($_GET['estat']);
 }
 ?>
 
@@ -58,46 +60,53 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CultiuConnect - Nou Monitoratge</title>
+    <title>CultiuConnect - Registrar Anàlisi</title>
     <link rel="stylesheet" href="estils.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
+        /* Definició de variables de color */
         :root {
             --color-principal: #1E4620;
             --color-secundari: #4CAF50;
             --color-primary-fosc: #143116;
-            --color-accent-taronja: #FF9800;
-            --color-accent-blau: #3498db;
+            --color-accent-lila: #9b59b6;
             --color-card-fons: white;
             --color-text-fosc: #333;
             --color-footer-fosc: rgba(30, 70, 32, 0.9);
             --color-footer-text: #ddd;
         }
 
+        /* 1. ESTILS DEL FONS DE LA PÀGINA I CONTINGUT GENERAL */
         body {
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
+            min-height: 100vh; 
+            display: flex; 
+            flex-direction: column; 
+            padding-bottom: 0; 
             background-color: #333;
-            background-image: url('fons_monitoratge.jpg');
+            background-image: url('fons_sectors.jpg');
             background-size: cover;
             background-position: center top;
             background-attachment: fixed;
         }
 
-        main.contingut-monitoratge {
-            flex-grow: 1;
-            max-width: 1000px;
-            padding: 105px 40px 40px 40px;
+        /* Ajustem main per forçar el creixement */
+        main.contingut-nou-analisi {
+            flex-grow: 1; 
+            max-width: 1100px;
+            
+            /* VALOR MÀXIM DE SEGURETAT: 1400px per garantir que el footer estigui al final */
+            min-height: 1300px; 
+            
+            padding: 105px 40px 40px 40px; 
             margin: 0 auto;
-            min-height: calc(100vh - 40px);
             background-color: transparent;
             box-shadow: none;
             color: white;
         }
 
+        /* 2. ESTIL DEL TÍTOL (Rectangular clar amb ombra) */
         .títol-pàgina {
-            max-width: 600px;
+            max-width: 700px;
             margin: 0 auto 20px auto;
             padding: 15px;
             background-color: rgba(255, 255, 255, 0.9);
@@ -105,16 +114,17 @@ try {
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
             color: var(--color-principal, #1E4620);
             text-align: center;
-            border-bottom: none;
         }
-
+        
         .títol-pàgina i {
-            color: var(--color-principal) !important;
+            color: var(--color-accent-lila) !important;
         }
 
+
+        /* 3. CONTENIDOR: El BLOC BLANC que encapsula el formulari */
         .contenidor-formulari-bloc {
-            max-width: 900px;
-            margin: 0 auto 30px auto;
+            max-width: 1000px;
+            margin: 0 auto 30px auto; 
             padding: 40px;
             background-color: var(--color-card-fons);
             border-radius: 8px;
@@ -122,18 +132,25 @@ try {
             color: var(--color-text-fosc);
         }
 
-        .formulari-monitoratge {
+        /* Estils del Formulari (Grid complex) */
+        .formulari-analisi {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr; 
             gap: 20px;
         }
-
+        
+        /* Grup de Camps amb estil flexbox per defecte */
         .grup-camp {
             display: flex;
             flex-direction: column;
             gap: 5px;
         }
-
+        
+        /* Camps que han d'ocupar el total o dues columnes */
+        .grup-camp.col-span-3 {
+            grid-column: 1 / span 3;
+        }
+        
         .grup-camp.col-span-2 {
             grid-column: 1 / span 2;
         }
@@ -144,7 +161,7 @@ try {
         }
 
         input[type="text"],
-        input[type="datetime-local"],
+        input[type="date"],
         input[type="number"],
         select,
         textarea {
@@ -152,21 +169,28 @@ try {
             border: 1px solid #ccc;
             border-radius: 4px;
             box-sizing: border-box;
+            width: 100%;
         }
 
-        .grup-checkbox {
-            display: flex;
-            align-items: center;
-            gap: 10px;
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+        
+        /* Separadors */
+        .separador {
+            grid-column: 1 / span 3;
+            margin: 10px 0;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #ddd;
+            color: var(--color-principal);
+            font-weight: bold;
+            font-size: 1.1em;
         }
 
-        .grup-checkbox input[type="checkbox"] {
-            width: 20px;
-            height: 20px;
-        }
 
         .boto-enviar {
-            background-color: var(--color-accent-taronja);
+            background-color: var(--color-accent-lila);
             color: white;
             padding: 15px;
             border: none;
@@ -178,28 +202,18 @@ try {
         }
 
         .boto-enviar:hover {
-            background-color: #e68900;
+            background-color: #8e44ad;
         }
-
+        
+        /* 4. ESTILS DE MISSATGE D'ESTAT */
         .alerta-resposta {
-            max-width: 900px;
+            max-width: 1000px;
             margin: 20px auto;
             padding: 15px 20px;
             border-radius: 5px;
             font-weight: bold;
             text-align: center;
-            color: var(--color-text-fosc);
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-        }
-
-        .alerta-resposta i {
-            margin-right: 10px;
-        }
-
-        .alerta-exit {
-            background-color: #d4edda;
-            border: 1px solid #c3e6cb;
-            color: #155724;
         }
 
         .alerta-error {
@@ -208,15 +222,18 @@ try {
             color: #721c24;
         }
 
+        /* 5. FOOTER: ESTIL NATURAL (Després del contingut) */
         .peu-app {
-            position: relative;
+            position: relative; 
+            
             background-color: var(--color-footer-fosc);
             color: var(--color-footer-text);
             padding: 30px 0 15px 0;
             width: 100%;
             font-size: 0.9em;
             box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.5);
-            margin-top: auto;
+            margin-top: auto; 
+            z-index: 1;
         }
 
         .contingut-footer {
@@ -228,6 +245,7 @@ try {
             gap: 30px;
             text-align: left;
         }
+
     </style>
 </head>
 
@@ -243,7 +261,7 @@ try {
                 <li><a href="operacio_nova.php"><i class="fas fa-spray-can-sparkles"></i> Nou Tractament</a></li>
                 <li><a href="quadern.php"><i class="fas fa-file-invoice"></i> Quadern Explotació</a></li>
                 <li><a href="estoc.php"><i class="fas fa-boxes-stacked"></i> Inventari</a></li>
-                <li class="actiu"><a href="#"><i class="fas fa-bug"></i> Monitoratge</a></li>
+                <li class="actiu"><a href="analisis_lab.php"><i class="fas fa-flask"></i> Anàlisis</a></li>
             </ul>
         </nav>
         <div class="informacio-usuari">
@@ -251,13 +269,13 @@ try {
         </div>
     </header>
 
-    <main class="contingut-monitoratge">
+    <main class="contingut-nou-analisi">
         <h1 class="títol-pàgina">
-            <i class="fas fa-bug"></i>
-            Registre de Monitoratge i Plagues
+            <i class="fas fa-flask"></i>
+            Registre de Nova Analítica de Laboratori
         </h1>
-        <p style="margin-bottom: 30px; color: #ccc">Registra una nova observació de plaga, malaltia, deficiència o
-            mala herba per fer el seguiment.</p>
+        <p style="margin-bottom: 30px; color: #ccc">Introdueix tots els paràmetres rellevants obtinguts de l'informe
+            del laboratori.</p>
 
         <?php if ($missatge_estat): ?>
             <div class="alerta-resposta alerta-<?= $estat_classe; ?>">
@@ -274,10 +292,13 @@ try {
                 </div>
             <?php endif; ?>
 
-            <form action="nou_monitoratge.php" method="POST" class="formulari-monitoratge">
+            <form action="processar_analisi.php" method="POST" class="formulari-analisi">
+
+                <div class="separador">Detalls Bàsics</div>
+
                 <div class="grup-camp col-span-2">
-                    <label for="sector_observat">Sector d'Observació <span style="color: red;">*</span></label>
-                    <select id="sector_observat" name="sector_observat" required>
+                    <label for="id_sector">Sector Analitzat <span style="color: red;">*</span></label>
+                    <select id="id_sector" name="id_sector" required>
                         <option value="" selected disabled>--- Selecciona un sector ---</option>
                         <?php foreach ($llistat_sectors as $sector): ?>
                             <option value="<?= $sector['id']; ?>">
@@ -288,47 +309,80 @@ try {
                 </div>
 
                 <div class="grup-camp">
-                    <label for="data_observacio">Data i Hora de l'Observació <span style="color: red;">*</span></label>
-                    <input type="datetime-local" id="data_observacio" name="data_observacio"
-                        value="<?= $data_actual; ?>" required>
-                </div>
-
-                <div class="grup-camp">
-                    <label for="tipus_problema">Tipus de Problema <span style="color: red;">*</span></label>
-                    <select id="tipus_problema" name="tipus_problema" required>
-                        <option value="" selected disabled>--- Selecciona un tipus ---</option>
-                        <option value="Plaga">Plaga (Insecte, Àcar, Nematode)</option>
-                        <option value="Malaltia">Malaltia (Fong, Virus, Bactèria)</option>
-                        <option value="Deficiencia">Deficiència Nutricional/Estrès</option>
-                        <option value="Mala Herba">Mala Herba</option>
-                        <option value="Altres">Altres Observacions</option>
+                    <label for="tipus_mostra">Tipus de Mostra <span style="color: red;">*</span></label>
+                    <select id="tipus_mostra" name="tipus_mostra" required>
+                        <option value="Sòl">Sòl</option>
+                        <option value="Fulla">Fulla (Folial)</option>
+                        <option value="Aigua">Aigua (Reg)</option>
                     </select>
                 </div>
 
                 <div class="grup-camp">
-                    <label for="descripcio_breu">Element Observat (Nom) <span style="color: red;">*</span></label>
-                    <input type="text" id="descripcio_breu" name="descripcio_breu"
-                        placeholder="Ex: Mosca Blanca, Oïdi, Manca de Nitrogen..." required>
+                    <label for="data_mostreig">Data de Mostreig <span style="color: red;">*</span></label>
+                    <input type="date" id="data_mostreig" name="data_mostreig" value="<?= $data_actual; ?>"
+                        required>
+                </div>
+
+                <div class="grup-camp">
+                    <label for="data_informe">Data de l'Informe (Recepció)</label>
+                    <input type="date" id="data_informe" name="data_informe">
                 </div>
                 
                 <div class="grup-camp">
-                    <label for="nivell_poblacio">Nivell / % Danys (Opcional)</label>
-                    <input type="number" step="0.01" id="nivell_poblacio" name="nivell_poblacio"
-                        placeholder="Ex: 10 (per cent de dany, o unitats/trampa...)">
+                    <label for="laboratori">Laboratori</label>
+                    <input type="text" id="laboratori" name="laboratori" placeholder="Ex: Agrolab S.L.">
                 </div>
 
-                <div class="grup-camp col-span-2">
-                    <label for="llindar_assolit">Llindar d'Intervenció Assolit?</label>
-                    <div class="grup-checkbox">
-                        <input type="checkbox" id="llindar_assolit" name="llindar_assolit" value="1">
-                        <label for="llindar_assolit" style="font-weight: normal; color: #666;">Marcar si l'observació
-                            requereix acció immediata.</label>
-                    </div>
+                <div class="separador">Paràmetres Clau (Unitats típiques)</div>
+
+                <div class="grup-camp">
+                    <label for="ph">pH (Unitats)</label>
+                    <input type="number" step="0.01" id="ph" name="ph" placeholder="Ex: 6.8">
                 </div>
 
-                <div class="grup-camp col-span-2">
+                <div class="grup-camp">
+                    <label for="mo_percent">Matèria Orgànica (%)</label>
+                    <input type="number" step="0.01" id="mo_percent" name="mo_percent" placeholder="Ex: 2.5">
+                </div>
+
+                <div class="grup-camp">
+                    <label for="ce_ds_m">Conductivitat Elèctrica (dS/m)</label>
+                    <input type="number" step="0.01" id="ce_ds_m" name="ce_ds_m" placeholder="Ex: 0.95">
+                </div>
+
+                <div class="grup-camp">
+                    <label for="n_ppm">Nitrogen (N total ppm)</label>
+                    <input type="number" step="0.1" id="n_ppm" name="n_ppm" placeholder="Ex: 150">
+                </div>
+
+                <div class="grup-camp">
+                    <label for="p_ppm">Fòsfor (P2O5 ppm)</label>
+                    <input type="number" step="0.1" id="p_ppm" name="p_ppm" placeholder="Ex: 35">
+                </div>
+
+                <div class="grup-camp">
+                    <label for="k_ppm">Potassi (K2O ppm)</label>
+                    <input type="number" step="0.1" id="k_ppm" name="k_ppm" placeholder="Ex: 420">
+                </div>
+                
+                <div class="separador">Resultats i Recomanacions</div>
+
+                <div class="grup-camp col-span-3">
+                    <label for="descripcio_nutricional">Resum / Estat Nutricional Final <span style="color: red;">*</span></label>
+                    <input type="text" id="descripcio_nutricional" name="descripcio_nutricional"
+                        placeholder="Ex: Lleuger dèficit de K, pH correcte, Matèria Orgànica baixa..." required>
+                </div>
+
+                <div class="grup-camp col-span-3">
+                    <label for="recomanacions">Recomanacions del Tècnic</label>
+                    <textarea id="recomanacions" name="recomanacions"
+                        placeholder="Ex: Aplicar 50 kg/ha de Sulfat Potàssic al mes vinent..."></textarea>
+                </div>
+
+
+                <div class="grup-camp col-span-3">
                     <button type="submit" class="boto-enviar">
-                        <i class="fas fa-cloud-upload"></i> Registrar Monitoratge
+                        <i class="fas fa-floppy-disk"></i> Guardar Analítica
                     </button>
                 </div>
             </form>
