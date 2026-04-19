@@ -1,0 +1,59 @@
+services:
+  php-apache:
+    build: .
+    container_name: php-apache-cultiuconnect
+    volumes:
+      - ./:/var/www/html
+    ports:
+      - "8080:80"
+    depends_on:
+      - db
+    networks:
+      - appnet
+
+  db:
+    image: mysql:8.0
+    container_name: mysql-cultiuconnect
+    restart: always
+    stop_grace_period: 1m
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: cultiuconnect
+      MYSQL_USER: cultiu_user
+      MYSQL_PASSWORD: cultiu_pass
+    volumes:
+      - db_sql_data:/var/lib/mysql
+      - ./database:/docker-entrypoint-initdb.d
+    networks:
+      - appnet
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: phpmyadmin-cultiuconnect
+    restart: always
+    ports:
+      - "8081:80"
+    environment:
+      PMA_HOST: db
+      MYSQL_ROOT_PASSWORD: root
+    depends_on:
+      - db
+    networks:
+      - appnet
+
+  ubuntu:
+    image: ubuntu:22.04
+    container_name: ubuntu-cultiuconnect
+    command: tail -f /dev/null
+    tty: true
+    volumes:
+      - ./:/home/ubuntu/cultiuconnect
+    depends_on:
+      - db
+
+networks:
+  appnet:
+    driver: bridge
+
+volumes:
+  db_sql_data:

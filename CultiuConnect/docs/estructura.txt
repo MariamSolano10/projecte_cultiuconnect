@@ -1,0 +1,100 @@
+CultiuConnect - estructura actual resumida
+=========================================
+
+Arrel
+-----
+
+- `.gitignore`
+- `.htaccess`
+- `Dockerfile`
+- `docker-compose.yaml`
+- `README.md`
+- `index.php`
+- `alertes.php`
+- `tracabilitat.php`
+- `generate_lines.js` (script auxiliar, no forma part del runtime web)
+
+Directoris principals
+---------------------
+
+- `api/`
+  - Endpoints JSON per a funcionalitats AJAX i suport GIS.
+- `assets/`
+  - `img/` per logos i fons.
+  - `fotos/parceles/` i `fotos/varietats/` per imatges de suport.
+- `auth/`
+  - Login i logout.
+- `config/`
+  - `config.example.php`
+  - `db.php`
+  - `db_config.php` (configuracio local, fora de control de versions)
+- `css/`
+  - `estils_globals.css`
+  - `estils_v2.css`
+- `data/geometries/`
+  - Backups JSON de parceles, sectors i infraestructures.
+- `database/`
+  - `01_cultiuconnect_bd.sql`
+  - `02_cultiuconnect_inserts.sql`
+  - `03_lines_corrected.sql`
+- `docs/`
+  - PDFs d'especificacio del projecte.
+  - Documents d'auditoria i suport.
+  - Aquest fitxer `estructura.txt`.
+- `errors/`
+  - Pagines 403, 404 i 500.
+- `includes/`
+  - `header.php`
+  - `footer.php`
+  - `helpers.php`
+- `js/`
+  - `scripts.js`
+- `libs/`
+  - `fpdf/`
+  - `phpqrcode/`
+- `modules/`
+  - Moduls funcionals de l'aplicacio.
+- `tests/`
+  - `README.md` amb l'estat actual de la validacio.
+- `tools/`
+  - `restaurar_geometries.php`
+
+Moduls funcionals presents a `modules/`
+---------------------------------------
+
+- `admin`
+- `analisis`
+- `calendari`
+- `clients`
+- `collita`
+- `comandes`
+- `dashboard`
+- `estoc`
+- `fila_aplicacio`
+- `finances`
+- `jornades`
+- `mapa`
+- `maquinaria`
+- `monitoratge`
+- `operacions`
+- `parceles`
+- `personal`
+- `planificacio_personal`
+- `previsio`
+- `protocols`
+- `proveidors`
+- `quadern`
+- `qualitat`
+- `sectors`
+- `seguiment`
+- `sensors`
+- `tasques`
+- `tractaments`
+- `varietats`
+
+Notes de manteniment
+--------------------
+
+- Aquest resum reflecteix el contingut actual del workspace.
+- Les versions antigues d'aquest document mencionaven fitxers que ja no existeixen, com `_drop_all.sql`, `_test_login.php`, `tools/check_db.php`, `tools/php_lint_all.php` i `tools/smoke_test.php`.
+- Si es necessita un arbre complet detallat, es pot regenerar puntualment amb una ordre de llistat del directori, pero la referencia principal hauria de ser aquest resum actualitzat.

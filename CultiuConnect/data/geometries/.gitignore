@@ -1,0 +1,6 @@
+# Fitxers de backup de geometries (persistència local)
+*.json
+
+# Mantenir el directori
+!.gitkeep
+!.gitignore

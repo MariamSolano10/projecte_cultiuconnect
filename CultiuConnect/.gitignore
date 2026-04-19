@@ -1,0 +1,17 @@
+# Credencials de base de dades
+config/db_config.php
+
+# Fitxers de sistema
+.DS_Store
+Thumbs.db
+
+# Logs i errors PHP
+*.log
+error_log
+
+# Dependències (si uses Composer algun dia)
+vendor/
+
+# Editors
+.vscode/
+.idea/

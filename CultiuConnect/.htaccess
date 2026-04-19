@@ -1,0 +1,156 @@
+# =============================================================================
+# CultiuConnect — .htaccess
+# Ubicació: arrel del projecte (/CultiuConnect/.htaccess)
+# Requereix: Apache mod_rewrite + AllowOverride All al VirtualHost
+# =============================================================================
+
+# ---- Opcions bàsiques ----
+Options -Indexes -MultiViews
+ServerSignature Off
+
+# ---- Joc de caràcters per defecte ----
+AddDefaultCharset UTF-8
+
+# =============================================================================
+# PROTECCIÓ DE FITXERS I DIRECTORIS SENSIBLES
+# =============================================================================
+
+# Bloquejar accés directe a config/ (credencials de BD)
+<FilesMatch "^(db_config|db)\.php$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order deny,allow
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Bloquejar accés directe a includes/ (helpers, header, footer)
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Bloquejar accés directe a includes/ i config/
+    RewriteRule ^(includes|config)/ - [F,L]
+
+    # Bloquejar fitxers .sql, .log, .bak, .env, .git
+    RewriteRule \.(sql|log|bak|env|sh|json)$ - [F,L]
+</IfModule>
+
+# Bloquejar .htaccess i .htpasswd
+<Files ~ "^\.ht">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order deny,allow
+        Deny from all
+    </IfModule>
+</Files>
+
+# Bloquejar accés a README i fitxers de configuració d'eines
+<FilesMatch "(README|composer\.(json|lock)|package\.json|\.env)">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+</FilesMatch>
+
+# =============================================================================
+# CAPÇALERES DE SEGURETAT HTTP
+# =============================================================================
+<IfModule mod_headers.c>
+    # Evitar clickjacking
+    Header always set X-Frame-Options "SAMEORIGIN"
+
+    # Evitar MIME sniffing
+    Header always set X-Content-Type-Options "nosniff"
+
+    # XSS Protection (navegadors antics)
+    Header always set X-XSS-Protection "1; mode=block"
+
+    # Referrer policy
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # No exposar informació del servidor
+    Header unset Server
+    Header unset X-Powered-By
+
+    # Content Security Policy bàsica
+    # Ajusta 'self' si uses CDNs externs (Leaflet, Chart.js, etc.)
+    Header always set Content-Security-Policy "\
+        default-src 'self'; \
+        script-src 'self' 'unsafe-inline' \
+            https://cdn.jsdelivr.net \
+            https://unpkg.com \
+            https://cdnjs.cloudflare.com; \
+        style-src 'self' 'unsafe-inline' \
+            https://cdn.jsdelivr.net \
+            https://unpkg.com \
+            https://cdnjs.cloudflare.com; \
+        img-src 'self' data: \
+            https://server.arcgisonline.com \
+            https://*.tile.openstreetmap.org \
+            https://api.qrserver.com; \
+        font-src 'self' \
+            https://cdnjs.cloudflare.com; \
+        connect-src 'self'; \
+        frame-ancestors 'none';"
+</IfModule>
+
+# =============================================================================
+# REDIRECCIÓ A LOGIN (protecció de tot el projecte)
+# =============================================================================
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /CultiuConnect/
+
+    # Permetre accés a assets estàtics sense autenticació
+    RewriteRule ^(css|js|assets|fonts)/.*$  - [L]
+
+    # Permetre accés al login i logout
+    RewriteRule ^auth/login\.php$   - [L]
+    RewriteRule ^auth/logout\.php$  - [L]
+
+    # Redirigir arrel al index
+    RewriteRule ^$  index.php [L]
+
+    # Nota: La protecció d'autenticació es gestiona a PHP via requereix_sessio()
+    # a cada fitxer protegit, no des d'aquí, per poder mostrar missatges flash.
+</IfModule>
+
+# =============================================================================
+# RENDIMENT: CACHE DE RECURSOS ESTÀTICS
+# =============================================================================
+<IfModule mod_expires.c>
+    ExpiresActive On
+
+    # Imatges
+    ExpiresByType image/jpeg  "access plus 1 month"
+    ExpiresByType image/png   "access plus 1 month"
+    ExpiresByType image/webp  "access plus 1 month"
+    ExpiresByType image/svg+xml "access plus 1 month"
+    ExpiresByType image/x-icon  "access plus 1 year"
+
+    # CSS i JS (versionats per nom de fitxer si cal forçar actualització)
+    ExpiresByType text/css            "access plus 1 week"
+    ExpiresByType application/javascript "access plus 1 week"
+
+    # Fonts
+    ExpiresByType font/woff   "access plus 1 year"
+    ExpiresByType font/woff2  "access plus 1 year"
+</IfModule>
+
+# =============================================================================
+# COMPRESSIÓ GZIP
+# =============================================================================
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css application/javascript
+    AddOutputFilterByType DEFLATE application/json text/xml
+</IfModule>
+
+# =============================================================================
+# PÀGINA D'ERROR PERSONALITZADA
+# =============================================================================
+ErrorDocument 403 /CultiuConnect/errors/403.php
+ErrorDocument 404 /CultiuConnect/errors/404.php
+ErrorDocument 500 /CultiuConnect/errors/500.php
